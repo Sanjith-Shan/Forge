@@ -1,0 +1,29 @@
+[package]
+name = "forge"
+version = "0.1.0"
+edition = "2021"
+description = "Generate embedded C boilerplate from TOML hardware descriptions"
+license = "MIT"
+repository = "https://github.com/Sanjith-Shan/Forge"
+readme = "README.md"
+keywords = ["embedded", "codegen", "c", "cli", "toml"]
+categories = ["command-line-utilities", "embedded"]
+
+[[bin]]
+name = "forge"
+path = "src/main.rs"
+
+[lib]
+name = "forge"
+path = "src/lib.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+tokio = { version = "1", features = ["full"] }
+thiserror = "2"
+
+[dev-dependencies]
+tempfile = "3"
+pretty_assertions = "1"
