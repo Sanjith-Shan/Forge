@@ -1,0 +1,22 @@
+[board]
+name = "basic_board"
+mcu = "stm32f4"
+clock_mhz = 84
+
+[[gpio]]
+pin = 13
+mode = "output"
+label = "led"
+
+[[gpio]]
+pin = 0
+mode = "input_pullup"
+label = "button"
+interrupt = "rising"
+
+[[uart]]
+index = 0
+tx_pin = 1
+rx_pin = 3
+baud = 9600
+label = "console"

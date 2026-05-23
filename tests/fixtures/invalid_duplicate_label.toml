@@ -1,0 +1,14 @@
+[board]
+name = "dup_board"
+mcu = "esp32c6"
+clock_mhz = 160
+
+[[gpio]]
+pin = 12
+mode = "output"
+label = "led"
+
+[[gpio]]
+pin = 13
+mode = "output"
+label = "led"

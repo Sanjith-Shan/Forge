@@ -1,0 +1,10 @@
+# The simplest possible board: a single LED on one output pin.
+[board]
+name = "blinky"
+mcu = "atmega328p"
+clock_mhz = 16
+
+[[gpio]]
+pin = 13
+mode = "output"
+label = "led"

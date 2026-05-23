@@ -1,0 +1,63 @@
+# Jupiter v2 — based on real hardware: AD5252 digital potentiometers on I2C,
+# six relay-control GPIOs, a status LED, and a serial link for hand-tracking data.
+[board]
+name = "jupiter_v2"
+mcu = "esp32c6"
+clock_mhz = 160
+
+[[gpio]]
+pin = 2
+mode = "output"
+label = "relay_ch1"
+
+[[gpio]]
+pin = 3
+mode = "output"
+label = "relay_ch2"
+
+[[gpio]]
+pin = 4
+mode = "output"
+label = "relay_ch3"
+
+[[gpio]]
+pin = 5
+mode = "output"
+label = "relay_ch4"
+
+[[gpio]]
+pin = 6
+mode = "output"
+label = "relay_ch5"
+
+[[gpio]]
+pin = 7
+mode = "output"
+label = "relay_ch6"
+
+[[gpio]]
+pin = 13
+mode = "output"
+label = "status_led"
+
+[[i2c]]
+bus = 0
+sda_pin = 21
+scl_pin = 22
+speed_khz = 400
+label = "pot_bus"
+
+[[i2c.device]]
+address = 0x2C
+label = "ad5252_left"
+
+[[i2c.device]]
+address = 0x2D
+label = "ad5252_right"
+
+[[uart]]
+index = 0
+tx_pin = 1
+rx_pin = 0
+baud = 115200
+label = "tracking_serial"
