@@ -11,10 +11,13 @@
 //! runs the code generators concurrently with Tokio.
 
 pub mod analysis;
+pub mod backend;
 pub mod codegen;
 pub mod config;
 pub mod error;
+pub mod frontend;
 pub mod graph;
+pub mod lint;
 pub mod model;
 
 pub use error::{ForgeError, ValidationError};

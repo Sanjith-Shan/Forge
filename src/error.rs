@@ -60,6 +60,14 @@ pub enum ForgeError {
     /// A spawned code-generation task panicked or was cancelled.
     #[error("code generation task failed: {0}")]
     Join(#[from] tokio::task::JoinError),
+
+    /// The AI frontend's language-model provider failed.
+    #[error("AI provider error: {0}")]
+    Ai(String),
+
+    /// A command-line usage error (e.g. an unknown backend id).
+    #[error("{0}")]
+    Usage(String),
 }
 
 /// Render a list of validation errors as a numbered, human-readable block.

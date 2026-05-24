@@ -23,9 +23,21 @@ path = "src/lib.rs"
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 toml = "0.8"
 tokio = { version = "1", features = ["full"] }
 thiserror = "2"
+reqwest = { version = "0.12", optional = true, default-features = false, features = [
+    "json",
+    "rustls-tls",
+] }
+
+[features]
+default = []
+# Enables the real OpenAI-backed AI frontend (`forge ai`). Without it, the AI
+# pipeline still exists and is testable via the mock provider, but the CLI's
+# `ai` command is unavailable.
+ai = ["dep:reqwest"]
 
 [dev-dependencies]
 tempfile = "3"

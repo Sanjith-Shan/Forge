@@ -1,8 +1,8 @@
 //! Code generation: turn a validated [`Board`] into C source files.
 //!
-//! Each output file has a pure `render_*` function (easy to snapshot-test) and a
-//! matching async `generate_*` function that renders and writes the file. The
-//! five files are mutually independent, so the CLI generates them concurrently.
+//! Each output file has a pure `render_*` function (easy to snapshot-test).
+//! The `c` backend (see `crate::backend::c`) wraps these and the backend writer
+//! handles the I/O, so the five files can be generated concurrently.
 
 pub mod gpio;
 pub mod header;
@@ -12,9 +12,7 @@ pub mod spi;
 pub mod uart;
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 
-use crate::error::ForgeError;
 use crate::model::Board;
 
 /// The five files Forge emits, in a stable order.
@@ -247,56 +245,4 @@ pub fn render_handlers_source(board: &Board) -> String {
 /// Render `main.c`: the main-loop skeleton.
 pub fn render_main(board: &Board) -> String {
     main_gen::render(board)
-}
-
-/// Write `contents` to `path`, mapping I/O failures to [`ForgeError::Write`].
-async fn write_file(path: &Path, contents: &str) -> Result<(), ForgeError> {
-    tokio::fs::write(path, contents)
-        .await
-        .map_err(|source| ForgeError::Write {
-            path: path.to_path_buf(),
-            source,
-        })
-}
-
-/// Render and write `init.h` into `output_dir`.
-pub async fn generate_init_header(board: Board, output_dir: PathBuf) -> Result<(), ForgeError> {
-    write_file(&output_dir.join("init.h"), &render_init_header(&board)).await
-}
-
-/// Render and write `init.c` into `output_dir`, ordering `board_init` by the
-/// supplied dependency layers.
-pub async fn generate_init_source(
-    board: Board,
-    layers: Vec<Vec<String>>,
-    output_dir: PathBuf,
-) -> Result<(), ForgeError> {
-    write_file(
-        &output_dir.join("init.c"),
-        &render_init_source(&board, &layers),
-    )
-    .await
-}
-
-/// Render and write `handlers.h` into `output_dir`.
-pub async fn generate_handlers_header(board: Board, output_dir: PathBuf) -> Result<(), ForgeError> {
-    write_file(
-        &output_dir.join("handlers.h"),
-        &render_handlers_header(&board),
-    )
-    .await
-}
-
-/// Render and write `handlers.c` into `output_dir`.
-pub async fn generate_handlers_source(board: Board, output_dir: PathBuf) -> Result<(), ForgeError> {
-    write_file(
-        &output_dir.join("handlers.c"),
-        &render_handlers_source(&board),
-    )
-    .await
-}
-
-/// Render and write `main.c` into `output_dir`.
-pub async fn generate_main(board: Board, output_dir: PathBuf) -> Result<(), ForgeError> {
-    write_file(&output_dir.join("main.c"), &render_main(&board)).await
 }

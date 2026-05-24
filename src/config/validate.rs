@@ -299,6 +299,21 @@ fn validate_i2c(raw: &[RawI2c], cx: &mut Collector) -> Vec<I2cBus> {
 
         let devices = validate_i2c_devices(&b.devices, &bus_name, cx);
 
+        // Two devices cannot share an address on the same bus — the controller
+        // could never tell them apart.
+        let mut seen_addrs: HashMap<u8, String> = HashMap::new();
+        for d in &devices {
+            if let Some(other) = seen_addrs.get(&d.address) {
+                cx.error(format!(
+                    "i2c devices '{other}' and '{}' both use address {:#04X} on {bus_name}. \
+                     Each device on a bus needs a unique address.",
+                    d.label, d.address
+                ));
+            } else {
+                seen_addrs.insert(d.address, d.label.clone());
+            }
+        }
+
         if let (Some(bus), Some(sda_pin), Some(scl_pin), Some(speed_khz), Some(label)) =
             (bus, sda_pin, scl_pin, speed_khz, label)
         {
