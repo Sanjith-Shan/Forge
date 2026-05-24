@@ -1,13 +1,10 @@
 //! Real OpenAI-backed provider (compiled only with the `ai` feature).
 //!
-//! Reads `OPENAI_API_KEY` from the environment (and optionally `OPENAI_MODEL`).
-//! The key is never logged or persisted.
+//! The API key and model are resolved by the caller (see [`crate::settings`])
+//! and passed in explicitly. The key is never logged or persisted here.
 
 use super::provider::LlmProvider;
 use crate::error::ForgeError;
-
-/// Default model if `OPENAI_MODEL` is not set.
-const DEFAULT_MODEL: &str = "gpt-4o-mini";
 
 /// Calls the OpenAI Chat Completions API.
 pub struct OpenAiProvider {
@@ -17,20 +14,13 @@ pub struct OpenAiProvider {
 }
 
 impl OpenAiProvider {
-    /// Build a provider from environment variables.
-    ///
-    /// Requires `OPENAI_API_KEY`. Honors `OPENAI_MODEL` (defaults to
-    /// `gpt-4o-mini`).
-    pub fn from_env() -> Result<Self, ForgeError> {
-        let api_key = std::env::var("OPENAI_API_KEY").map_err(|_| {
-            ForgeError::Ai("OPENAI_API_KEY is not set in the environment".to_string())
-        })?;
-        let model = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_string());
-        Ok(Self {
-            api_key,
-            model,
+    /// Build a provider from an explicit key and model.
+    pub fn new(api_key: impl Into<String>, model: impl Into<String>) -> Self {
+        Self {
+            api_key: api_key.into(),
+            model: model.into(),
             client: reqwest::Client::new(),
-        })
+        }
     }
 }
 

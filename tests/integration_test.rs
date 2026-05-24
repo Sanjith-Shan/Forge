@@ -144,6 +144,65 @@ fn lint_fails_on_invalid_config() {
 }
 
 #[test]
+fn init_writes_a_config_that_checks_clean() {
+    let dir = tempfile::tempdir().unwrap();
+    let cfg = dir.path().join("board.toml");
+
+    let init = Command::new(forge_bin())
+        .args(["init"])
+        .arg(&cfg)
+        .status()
+        .unwrap();
+    assert!(init.success());
+    assert!(cfg.exists());
+
+    // The freshly-scaffolded config must pass `check`.
+    let check = Command::new(forge_bin())
+        .args(["check"])
+        .arg(&cfg)
+        .status()
+        .unwrap();
+    assert!(check.success(), "init template should check clean");
+}
+
+#[test]
+fn init_refuses_to_overwrite_without_force() {
+    let dir = tempfile::tempdir().unwrap();
+    let cfg = dir.path().join("board.toml");
+    std::fs::write(&cfg, "existing").unwrap();
+
+    let status = Command::new(forge_bin())
+        .args(["init"])
+        .arg(&cfg)
+        .status()
+        .unwrap();
+    assert!(!status.success(), "must not clobber an existing file");
+}
+
+#[test]
+fn backends_lists_known_targets() {
+    let out = Command::new(forge_bin()).arg("backends").output().unwrap();
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("c"));
+    assert!(stdout.contains("zephyr"));
+}
+
+#[test]
+fn completions_emit_a_script() {
+    let out = Command::new(forge_bin())
+        .args(["completions", "bash"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("forge"),
+        "completion script mentions the binary"
+    );
+}
+
+#[test]
 fn report_flag_writes_analysis_file() {
     let out = tempfile::tempdir().unwrap();
     let status = Command::new(forge_bin())

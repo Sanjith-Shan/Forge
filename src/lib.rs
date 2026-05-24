@@ -19,6 +19,7 @@ pub mod frontend;
 pub mod graph;
 pub mod lint;
 pub mod model;
+pub mod settings;
 
 pub use error::{ForgeError, ValidationError};
 pub use model::Board;

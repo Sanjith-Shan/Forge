@@ -59,6 +59,17 @@ fn valid_configs_pass() {
 }
 
 #[test]
+fn init_template_is_always_valid() {
+    // The starter config emitted by `forge init` must validate cleanly, or new
+    // users hit an error on their very first `forge check`.
+    let template = include_str!("../src/templates/board.toml");
+    assert!(
+        errors_for(template).is_empty(),
+        "the init template must be a valid config"
+    );
+}
+
+#[test]
 fn reserved_i2c_address_warns_but_passes() {
     let toml = r#"
         [board]

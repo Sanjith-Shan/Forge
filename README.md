@@ -40,21 +40,34 @@ ordering, register correctness). Forge sits in the gap:
 ## Install
 
 ```bash
-cargo install --path .                 # core tool (binary: `forge`)
-cargo install --path . --features ai   # also enable the OpenAI-backed `ai` command
+cargo install forge-embedded                 # from crates.io (binary: `forge`)
+cargo install forge-embedded --features ai   # + the OpenAI-backed `ai` command
+
+# or from a checkout:
+cargo install --path .
+cargo install --path . --features ai
 ```
 
-The crate publishes as `forge-embedded`; the binary is `forge`.
+The crate publishes as `forge-embedded`; the installed binary is `forge`.
+
+New here? `forge init` writes a starter `board.toml`, then `forge build board.toml`.
 
 ## Commands
 
 ```
-forge build <config> [--backend c|zephyr|all] [-o dir] [--report] [-v]
-forge lint  <config> [--json]        # design review; nonzero exit on errors
-forge graph <config>                 # dependency graph as Graphviz DOT
-forge check <config>                 # validate only
-forge ai    "<intent>" [--from-datasheet f] [-o board.toml] [--build]
+forge init   [path] [--force]                  # scaffold a starter board.toml
+forge build  <config> [--backend c|zephyr|all] [-o dir] [--report] [-v]
+forge lint   <config> [--json]                 # design review; nonzero exit on errors
+forge graph  <config>                          # dependency graph as Graphviz DOT
+forge check  <config>                          # validate only
+forge ai     "<intent>" [--from-datasheet f] [-o board.toml] [--build]
+forge config <path|show|set|set-key>           # manage settings & API key
+forge backends                                 # list code-generation targets
+forge completions <bash|zsh|fish|...>          # shell completion script
 ```
+
+Defaults (`--backend`, `-o`) and the AI key/model can be persisted in a config
+file so you don't repeat them — see [Configuration & keys](#configuration--keys).
 
 ### `build` — generate code
 
@@ -85,14 +98,46 @@ exit nonzero.
 ### `ai` — synthesize a config from intent, then verify it
 
 ```bash
-export OPENAI_API_KEY=...    # never commit this; .env is gitignored
 forge ai "drone controller: an IMU on I2C and a GPS on UART" --build
 ```
 
 The model returns a candidate `board.toml`; Forge runs it through the full gate
 (validation + dependency graph + lint) and **refuses to write an invalid
-config**. Requires `--features ai`. Honors `OPENAI_MODEL` (default
-`gpt-4o-mini`). Without the feature, the rest of Forge works unchanged.
+config**. Requires building with `--features ai`. Without the feature, the rest
+of Forge works unchanged.
+
+## Configuration & keys
+
+Forge needs an OpenAI API key only for `forge ai`. It is resolved in this order
+(first wins), so you can pick whatever fits your workflow and keep secrets out of
+source control:
+
+1. `--api-key <key>` flag (handy for one-offs)
+2. `OPENAI_API_KEY` environment variable
+3. a `.env` file in the working directory (`OPENAI_API_KEY=...`; gitignored)
+4. the config file (`forge config set-key`, which reads stdin so the key never
+   lands in your shell history)
+
+```bash
+# Recommended: env var or .env
+export OPENAI_API_KEY=sk-...
+echo 'OPENAI_API_KEY=sk-...' > .env          # .env is gitignored
+
+# Or store it (and other defaults) in ~/.config/forge/config.toml (chmod 600):
+forge config set-key < my_key.txt
+forge config set model gpt-4o
+forge config set backend all
+forge config show                            # prints settings; the key is redacted
+forge config path                            # where the config file lives
+```
+
+The config file (`$XDG_CONFIG_HOME/forge/config.toml`, else
+`~/.config/forge/config.toml`) can hold `openai_api_key`, `openai_model`,
+`default_backend`, and `default_output`. `OPENAI_MODEL` overrides the model;
+default is `gpt-4o-mini`.
+
+> **Never commit an API key.** `.env` and `*.env` are gitignored, the config
+> file is written `0600`, and `forge config show` redacts the key.
 
 ## Describing a board
 
@@ -139,6 +184,7 @@ src/
   analysis/   the underlying checks + resource summary + report
   backend/    Backend trait + c (scaffolding) + zephyr (devicetree)
   codegen/    pure C renderers used by the C backend
+  settings/   user config + API-key resolution
 ```
 
 Adding a target is one `Backend` impl; adding an input source is one frontend —
@@ -147,12 +193,25 @@ the IR, the validation, and the analysis are shared by all of them.
 ## Development
 
 ```bash
-cargo test                       # full suite (53 tests)
+cargo test                       # full suite (63 tests)
 cargo test --features ai         # include the AI-feature build
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 cargo run -- build examples/sensor_hub.toml --backend all -o /tmp/out -v
 ```
+
+## Releasing
+
+Pushing a version tag triggers [`.github/workflows/release.yml`](.github/workflows/release.yml),
+which runs the checks and publishes to crates.io. It needs a repository secret
+`CARGO_REGISTRY_TOKEN` (a crates.io API token):
+
+```bash
+# one-time: add CARGO_REGISTRY_TOKEN under GitHub → Settings → Secrets → Actions
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+To publish manually instead: `cargo login` then `cargo publish`.
 
 ## License
 

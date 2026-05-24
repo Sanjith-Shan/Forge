@@ -1,0 +1,60 @@
+# Forge board description. Edit this to match your hardware, then run:
+#   forge check board.toml      # validate
+#   forge build board.toml      # generate C (or --backend zephyr | all)
+#   forge lint  board.toml      # design review
+#
+# Docs: https://github.com/Sanjith-Shan/Forge
+
+[board]
+name = "my_board"          # becomes part of generated identifiers
+mcu = "esp32c6"            # informational (appears in generated comments)
+clock_mhz = 160            # system clock, used for SPI clock analysis
+
+# --- GPIO -------------------------------------------------------------------
+[[gpio]]
+pin = 13
+mode = "output"            # input | output | input_pullup | input_pulldown
+label = "status_led"
+
+[[gpio]]
+pin = 4
+mode = "input_pullup"
+label = "button"
+interrupt = "falling"      # rising | falling | both | none
+
+# --- I2C --------------------------------------------------------------------
+[[i2c]]
+bus = 0
+sda_pin = 21
+scl_pin = 22
+speed_khz = 400            # 100 (standard) or 400 (fast)
+label = "sensor_bus"
+
+[[i2c.device]]
+address = 0x68             # 7-bit address
+label = "imu"
+# depends_on = "other_label"  # initialize that peripheral first
+# power_pin = 13              # a GPIO output driven HIGH before init
+# poll_rate_hz = 100          # enables I2C bus-utilization analysis
+
+# --- UART -------------------------------------------------------------------
+[[uart]]
+index = 1
+tx_pin = 17
+rx_pin = 16
+baud = 115200
+label = "debug_serial"
+
+# --- SPI (uncomment to use) -------------------------------------------------
+# [[spi]]
+# bus = 0
+# mosi_pin = 23
+# miso_pin = 19
+# sck_pin = 18
+# label = "display_bus"
+#
+# [[spi.device]]
+# cs_pin = 5
+# label = "oled"
+# mode = 0                  # SPI mode 0-3
+# speed_mhz = 10
