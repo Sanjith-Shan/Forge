@@ -1,143 +1,110 @@
 # Forge
 
-> A vendor-neutral hardware bring-up compiler: describe a board once, verify it, and generate initialization code for any target.
+I built Forge after rewriting the same hardware setup code at hackathon after hackathon. Every project started the same way, hand writing I2C, SPI, UART, and GPIO initialization, accidentally assigning a pin twice, and then losing an hour tracking down the mistake. Forge is the tool I wished I had. You describe the board once and it writes the boilerplate, checks it for mistakes, and orders the startup correctly.
 
-Forge reads a simple description of an embedded board — which peripherals are
-wired to which pins, at what settings, and how they depend on each other —
-**verifies it deterministically**, and **generates target code** (portable C
-today, Zephyr devicetree today, more later) from a single source of truth.
+> Describe an embedded board once. Forge verifies it and generates initialization code for multiple targets.
 
-It is built like a compiler: **many frontends → one verified IR → many
-backends.**
+Forge reads a simple description of a board, which peripherals are wired to which pins, at what settings, and how they depend on each other. It verifies that description deterministically and generates target code (portable C today, Zephyr devicetree today, more later) from a single source of truth.
+
+It works like a compiler. Many frontends feed one verified intermediate representation, and that representation feeds many backends.
 
 ```
-   FRONTENDS                  CORE (deterministic, trusted)            BACKENDS
- ┌──────────────┐
- │ board.toml   │──┐                                            ┌──> C scaffolding
- │ (hand-written)  │    parse → VALIDATE → Board IR → LINT  ───>┤
- │ natural lang │──┘         (graph + analysis)                 └──> Zephyr devicetree
- │ /datasheet(AI)│                  ▲
- └──────────────┘   every frontend's output runs the same gate
+  Frontends                     Core (deterministic, trusted)        Backends
+
+  board.toml ------\
+                    \
+  natural language ----> parse  validate  graph  lint  ----> C scaffolding
+  or datasheet (AI) /                                  ----> Zephyr devicetree
+                   /
+  every frontend runs the very same gate before any code is produced
 ```
 
-The point: whether a config is hand-written or proposed by a language model, it
-goes through the **same deterministic verification gate** before anything is
-generated. The AI proposes; the trusted core disposes.
+The important rule is simple. Whether a config is hand written or proposed by a language model, it runs through the same deterministic verification gate before any code is generated. The AI proposes and the trusted core disposes.
 
-## Why this, when STM32CubeMX and Zephyr exist?
+## Why I built it this way
 
-The incumbents are vendor-locked (CubeMX = ST, NXP tools = NXP) and chip-local,
-and raw LLM code generators are unreliable on the exact details (timing,
-ordering, register correctness). Forge sits in the gap:
+The big vendor tools are locked to one chip family (CubeMX to ST, the NXP tools to NXP), and raw language model code generators are unreliable on the exact details like timing, ordering, and register correctness. Forge sits in the gap between them.
 
-- **Vendor-neutral IR → multiple backends.** One description, many targets.
-- **System-level reasoning the incumbents under-serve.** Dependency-ordered
-  init, bus-utilization estimates, clock-achievability, interrupt budget,
-  cross-peripheral conflicts — all deterministic.
-- **An AI frontend that's *safe*** because every model proposal is run through
-  the same verifier as a hand-written file.
+- **Vendor neutral IR to multiple backends.** One description, many targets.
+- **System level reasoning that the big tools underserve.** Dependency ordered init, bus utilization estimates, clock achievability, interrupt budget, and cross peripheral conflicts, all computed deterministically.
+- **An AI frontend that stays safe** because every model proposal runs through the same verifier as a hand written file.
 
 ## Install
 
 ```bash
-cargo install forge-embedded                 # from crates.io (binary: `forge`)
-cargo install forge-embedded --features ai   # + the OpenAI-backed `ai` command
+cargo install forge-embedded
+cargo install forge-embedded --features ai
 
-# or from a checkout:
+# or from a checkout
 cargo install --path .
 cargo install --path . --features ai
 ```
 
-The crate publishes as `forge-embedded`; the installed binary is `forge`.
+The crate publishes as forge-embedded and the installed binary is named forge.
 
-New here? `forge init` writes a starter `board.toml`, then `forge build board.toml`.
+New here? Run `forge init` to write a starter board.toml, then `forge build board.toml`.
 
 ## Commands
 
 ```
-forge init   [path] [--force]                  # scaffold a starter board.toml
+forge init   [path] [--force]                 scaffold a starter board.toml
 forge build  <config> [--backend c|zephyr|all] [-o dir] [--report] [-v]
-forge lint   <config> [--json]                 # design review; nonzero exit on errors
-forge graph  <config>                          # dependency graph as Graphviz DOT
-forge check  <config>                          # validate only
+forge lint   <config> [--json]                design review, nonzero exit on errors
+forge graph  <config>                         dependency graph as Graphviz DOT
+forge check  <config>                         validate only
 forge ai     "<intent>" [--from-datasheet f] [-o board.toml] [--build]
-forge config <path|show|set|set-key>           # manage settings & API key
-forge backends                                 # list code-generation targets
-forge completions <bash|zsh|fish|...>          # shell completion script
+forge config <path|show|set|set-key>          manage settings and the API key
+forge backends                                list code generation targets
+forge completions <bash|zsh|fish>             shell completion script
 ```
 
-Defaults (`--backend`, `-o`) and the AI key/model can be persisted in a config
-file so you don't repeat them — see [Configuration & keys](#configuration--keys).
+Defaults for the backend and the output directory, plus the AI key and model, can be saved in a config file so you never repeat them. See [Configuration and keys](#configuration-and-keys).
 
-### `build` — generate code
+### build
 
 ```bash
-forge build board.toml                       # portable C into ./output/
-forge build board.toml --backend zephyr      # a .overlay + prj.conf
-forge build board.toml --backend all -o gen/ # both, in gen/c and gen/zephyr
+forge build board.toml
+forge build board.toml --backend zephyr
+forge build board.toml --backend all -o gen/
 ```
 
-The C backend emits `init.{c,h}`, `handlers.{c,h}`, and `main.c`, with
-`board_init()` ordered by dependency analysis. The Zephyr backend emits a
-devicetree `.overlay` and a matching `prj.conf` — targeting the most-complained-
-about part of Zephyr (hand-writing devicetree).
+The C backend emits init.c, init.h, handlers.c, handlers.h, and main.c, with board_init ordered by dependency analysis. The Zephyr backend emits a devicetree overlay and a matching prj.conf, which targets the part of Zephyr that people complain about most, hand writing devicetree.
 
-### `lint` — deterministic design review
+### lint
+
+Running `forge lint board.toml` performs a deterministic design review and prints findings. Each finding has a severity, a stable code, a message, and a suggested fix. Pass `--json` for structured output suited to CI, with the fields severity, code, message, and suggestion. Hard errors such as pin conflicts, dependency cycles, and bad addresses make it exit nonzero.
+
+### ai
 
 ```bash
-$ forge lint board.toml
-[WARN] spi-clock-mismatch: SPI device 'oled' requested 20 MHz but closest achievable is 10.50 MHz ...
-       ↳ Request a speed reachable by a power-of-two prescaler of the system clock.
-[INFO] i2c-no-poll-rate: I2C bus 'sensor_bus' has devices but no poll_rate_hz ...
+forge ai "drone controller with an IMU on I2C and a GPS on UART" --build
 ```
 
-`--json` emits structured diagnostics (`severity`, `code`, `message`,
-`suggestion`) for CI. Hard errors (pin conflicts, cycles, bad addresses) make it
-exit nonzero.
+The model returns a candidate board.toml. Forge runs it through the full gate, which is validation, the dependency graph, and lint, and it refuses to write an invalid config. This command requires building with `--features ai`. Without the feature the rest of Forge works unchanged.
 
-### `ai` — synthesize a config from intent, then verify it
+## Configuration and keys
 
-```bash
-forge ai "drone controller: an IMU on I2C and a GPS on UART" --build
-```
+Forge needs an OpenAI API key only for `forge ai`. It is resolved in the following order, and the first one found wins, so you can keep secrets out of source control.
 
-The model returns a candidate `board.toml`; Forge runs it through the full gate
-(validation + dependency graph + lint) and **refuses to write an invalid
-config**. Requires building with `--features ai`. Without the feature, the rest
-of Forge works unchanged.
-
-## Configuration & keys
-
-Forge needs an OpenAI API key only for `forge ai`. It is resolved in this order
-(first wins), so you can pick whatever fits your workflow and keep secrets out of
-source control:
-
-1. `--api-key <key>` flag (handy for one-offs)
-2. `OPENAI_API_KEY` environment variable
-3. a `.env` file in the working directory (`OPENAI_API_KEY=...`; gitignored)
-4. the config file (`forge config set-key`, which reads stdin so the key never
-   lands in your shell history)
+1. the `--api-key <key>` flag, handy for one offs
+2. the `OPENAI_API_KEY` environment variable
+3. a .env file in the working directory containing `OPENAI_API_KEY=...`, which is gitignored
+4. the config file, written by `forge config set-key`, which reads stdin so the key never lands in your shell history
 
 ```bash
-# Recommended: env var or .env
-export OPENAI_API_KEY=sk-...
-echo 'OPENAI_API_KEY=sk-...' > .env          # .env is gitignored
+export OPENAI_API_KEY=sk-your-key
+echo 'OPENAI_API_KEY=sk-your-key' > .env
 
-# Or store it (and other defaults) in ~/.config/forge/config.toml (chmod 600):
 forge config set-key < my_key.txt
 forge config set model gpt-4o
 forge config set backend all
-forge config show                            # prints settings; the key is redacted
-forge config path                            # where the config file lives
+forge config show
+forge config path
 ```
 
-The config file (`$XDG_CONFIG_HOME/forge/config.toml`, else
-`~/.config/forge/config.toml`) can hold `openai_api_key`, `openai_model`,
-`default_backend`, and `default_output`. `OPENAI_MODEL` overrides the model;
-default is `gpt-4o-mini`.
+The config file lives at $XDG_CONFIG_HOME/forge/config.toml, or ~/.config/forge/config.toml. It can hold openai_api_key, openai_model, default_backend, and default_output. The OPENAI_MODEL environment variable overrides the model, and the default is gpt-4o-mini.
 
-> **Never commit an API key.** `.env` and `*.env` are gitignored, the config
-> file is written `0600`, and `forge config show` redacts the key.
+Never commit an API key. The .env and *.env patterns are gitignored, the config file is written with 0600 permissions, and `forge config show` redacts the key.
 
 ## Describing a board
 
@@ -162,39 +129,35 @@ label = "sensor_bus"
 [[i2c.device]]
 address = 0x68
 label = "imu"
-depends_on = "i2c_mux"   # initialize the mux first
-power_pin = 12           # drive GPIO 12 HIGH before init
-poll_rate_hz = 100       # used for bus-utilization analysis
+depends_on = "i2c_mux"
+power_pin = 12
+poll_rate_hz = 100
 ```
 
-Supported peripherals: **GPIO, I2C, SPI, UART.** Dependencies (`depends_on`,
-`power_pin`, and implicit bus / chip-select edges) drive a topological sort that
-orders `board_init()` into layers and detects cycles. See [`examples/`](examples/)
-for `minimal`, `jupiter`, `full`, and `sensor_hub` boards.
+Supported peripherals are GPIO, I2C, SPI, and UART. Dependencies, which are depends_on, power_pin, and the implicit bus and chip select edges, drive a topological sort that orders board_init into layers and detects cycles. See the examples folder for the minimal, jupiter, full, and sensor_hub boards.
 
 ## Architecture
 
 ```
 src/
-  model/      IR — the validated Board (single source of truth)
-  config/     TOML frontend: parse + validate (the hard gate)
-  frontend/ai AI frontend: intent/datasheet → candidate TOML → same gate
-  graph/      dependency DAG: topological sort, layering, cycle detection
-  lint/       design-review engine: structured diagnostics
-  analysis/   the underlying checks + resource summary + report
-  backend/    Backend trait + c (scaffolding) + zephyr (devicetree)
+  model/      the validated Board IR, the single source of truth
+  config/     TOML frontend, parse and validate (the hard gate)
+  frontend/ai AI frontend, intent or datasheet to candidate TOML, same gate
+  graph/      dependency DAG, topological sort, layering, cycle detection
+  lint/       design review engine, structured diagnostics
+  analysis/   the underlying checks, resource summary, and report
+  backend/    Backend trait, c (scaffolding) and zephyr (devicetree)
   codegen/    pure C renderers used by the C backend
-  settings/   user config + API-key resolution
+  settings/   user config and API key resolution
 ```
 
-Adding a target is one `Backend` impl; adding an input source is one frontend —
-the IR, the validation, and the analysis are shared by all of them.
+Adding a target is one Backend impl, and adding an input source is one frontend. The IR, the validation, and the analysis are shared by all of them.
 
 ## Development
 
 ```bash
-cargo test                       # full suite (63 tests)
-cargo test --features ai         # include the AI-feature build
+cargo test
+cargo test --features ai
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 cargo run -- build examples/sensor_hub.toml --backend all -o /tmp/out -v
@@ -202,17 +165,15 @@ cargo run -- build examples/sensor_hub.toml --backend all -o /tmp/out -v
 
 ## Releasing
 
-Pushing a version tag triggers [`.github/workflows/release.yml`](.github/workflows/release.yml),
-which runs the checks and publishes to crates.io. It needs a repository secret
-`CARGO_REGISTRY_TOKEN` (a crates.io API token):
+Pushing a version tag triggers the release workflow in .github/workflows, which runs the checks and publishes to crates.io. It needs a repository secret named CARGO_REGISTRY_TOKEN, which is a crates.io API token added under the repository Settings, then Secrets and variables, then Actions.
 
 ```bash
-# one-time: add CARGO_REGISTRY_TOKEN under GitHub → Settings → Secrets → Actions
-git tag v0.1.0 && git push origin v0.1.0
+git tag v0.1.0
+git push origin v0.1.0
 ```
 
-To publish manually instead: `cargo login` then `cargo publish`.
+To publish by hand instead, run `cargo login` and then `cargo publish`.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
