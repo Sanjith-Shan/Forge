@@ -31,13 +31,14 @@ reqwest = { version = "0.12", optional = true, default-features = false, feature
     "json",
     "rustls-tls",
 ] }
+dotenvy = { version = "0.15", optional = true }
 
 [features]
 default = []
 # Enables the real OpenAI-backed AI frontend (`forge ai`). Without it, the AI
 # pipeline still exists and is testable via the mock provider, but the CLI's
-# `ai` command is unavailable.
-ai = ["dep:reqwest"]
+# `ai` command is unavailable. `dotenvy` lets the key live in a gitignored .env.
+ai = ["dep:reqwest", "dep:dotenvy"]
 
 [dev-dependencies]
 tempfile = "3"

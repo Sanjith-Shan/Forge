@@ -103,6 +103,10 @@ struct AiArgs {
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    // Load OPENAI_API_KEY (and friends) from a gitignored .env if present.
+    #[cfg(feature = "ai")]
+    let _ = dotenvy::dotenv();
+
     let cli = Cli::parse();
     let result = match cli.command {
         Command::Build(args) => cmd_build(args).await,
