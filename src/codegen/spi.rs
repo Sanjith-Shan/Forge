@@ -1,7 +1,7 @@
 //! SPI code generation: per bus, an init and full-duplex transfer; per device,
-//! chip-select assert/deassert helpers.
+//! a chip-select-configuring init plus assert/deassert helpers.
 
-use crate::model::SpiBus;
+use crate::model::{Gpio, SpiBus};
 
 /// Declaration block for `init.h`. Empty when there are no SPI buses.
 pub fn decl_section(buses: &[SpiBus]) -> Option<String> {
@@ -12,6 +12,7 @@ pub fn decl_section(buses: &[SpiBus]) -> Option<String> {
     for b in buses {
         lines.push(format!("void spi_{}_init(void);", b.label));
         for d in &b.devices {
+            lines.push(format!("void spi_{}_init(void);", d.label));
             lines.push(format!("void spi_{}_select(void);", d.label));
             lines.push(format!("void spi_{}_deselect(void);", d.label));
         }
@@ -24,38 +25,47 @@ pub fn decl_section(buses: &[SpiBus]) -> Option<String> {
 }
 
 /// Implementation functions for `init.c`.
-pub fn impl_fns(buses: &[SpiBus]) -> Vec<String> {
+///
+/// `gpios` is consulted so a chip-select pin that is *also* a declared GPIO
+/// output is configured once (by its `gpio_init_*` function), not twice.
+pub fn impl_fns(buses: &[SpiBus], gpios: &[Gpio]) -> Vec<String> {
     let mut fns = Vec::new();
     for b in buses {
-        let mut init = format!("void spi_{}_init(void) {{\n", b.label);
-        init.push_str(&format!(
-            "    /* SPI bus {}: MOSI={}, MISO={}, SCK={} */\n",
-            b.bus, b.mosi_pin, b.miso_pin, b.sck_pin
+        fns.push(format!(
+            "void spi_{label}_init(void) {{\n    \
+             /* SPI bus {bus}: MOSI={mosi}, MISO={miso}, SCK={sck} */\n    \
+             SPI_INIT({bus}, {mosi}, {miso}, {sck});\n}}",
+            label = b.label,
+            bus = b.bus,
+            mosi = b.mosi_pin,
+            miso = b.miso_pin,
+            sck = b.sck_pin,
         ));
-        init.push_str(&format!(
-            "    SPI_INIT({}, {}, {}, {});\n",
-            b.bus, b.mosi_pin, b.miso_pin, b.sck_pin
-        ));
+
         for d in &b.devices {
+            let mut init = format!("void spi_{}_init(void) {{\n", d.label);
             init.push_str(&format!(
-                "    /* Chip-select: {} on pin {} (mode {}, {} MHz) */\n",
-                d.label, d.cs_pin, d.mode, d.speed_mhz
+                "    /* SPI device {}: CS={}, mode {}, {} MHz on bus {} */\n",
+                d.label, d.cs_pin, d.mode, d.speed_mhz, b.label
             ));
+            match gpios.iter().find(|g| g.pin == d.cs_pin && g.is_output()) {
+                Some(g) => init.push_str(&format!(
+                    "    /* CS pin {} configured by gpio_init_{} */\n",
+                    d.cs_pin, g.label
+                )),
+                None => init.push_str(&format!(
+                    "    GPIO_SET_MODE({}, GPIO_MODE_OUTPUT);\n",
+                    d.cs_pin
+                )),
+            }
             init.push_str(&format!(
-                "    GPIO_SET_MODE({}, GPIO_MODE_OUTPUT);\n",
-                d.cs_pin
-            ));
-            init.push_str(&format!(
-                "    SPI_CONFIG_CS({}, SPI_MODE_{}, {});\n",
+                "    SPI_CONFIG_CS({}, SPI_MODE_{}, {});\n}}",
                 d.cs_pin,
                 d.mode,
                 d.speed_mhz * 1_000_000
             ));
-        }
-        init.push('}');
-        fns.push(init);
+            fns.push(init);
 
-        for d in &b.devices {
             fns.push(format!(
                 "void spi_{label}_select(void) {{\n    \
                  /* Pull CS low to select {label} */\n    \

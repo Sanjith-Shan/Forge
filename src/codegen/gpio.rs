@@ -1,7 +1,12 @@
-//! GPIO code generation: a single `gpio_init_all` plus one ISR per
-//! interrupt-enabled pin.
+//! GPIO code generation: one `gpio_init_<label>` per pin (so each can sit at
+//! its own dependency layer) plus one ISR per interrupt-enabled pin.
 
 use crate::model::Gpio;
+
+/// The C name of the per-pin init function.
+pub fn init_name(g: &Gpio) -> String {
+    format!("gpio_init_{}", g.label)
+}
 
 /// The C name of the ISR generated for an interrupt-enabled pin.
 fn isr_name(g: &Gpio) -> String {
@@ -13,47 +18,47 @@ pub fn decl_section(gpios: &[Gpio]) -> Option<String> {
     if gpios.is_empty() {
         return None;
     }
-    Some("/* GPIO */\nvoid gpio_init_all(void);".to_string())
+    let mut lines = vec!["/* GPIO */".to_string()];
+    for g in gpios {
+        lines.push(format!("void {}(void);", init_name(g)));
+    }
+    Some(lines.join("\n"))
 }
 
-/// The `gpio_init_all` definition for `init.c`. Empty when there are no pins.
+/// One init function per pin for `init.c`.
 pub fn impl_fns(gpios: &[Gpio]) -> Vec<String> {
-    if gpios.is_empty() {
-        return Vec::new();
-    }
-
-    let mut body = String::from("void gpio_init_all(void) {\n");
-    for (i, g) in gpios.iter().enumerate() {
-        if i > 0 {
-            body.push('\n');
-        }
-        let intr_note = match g.interrupt {
-            Some(edge) => format!(", interrupt on {}", edge.describe()),
-            None => String::new(),
-        };
-        body.push_str(&format!(
-            "    /* Pin {}: {} ({}{}) */\n",
-            g.pin,
-            g.label,
-            g.mode.describe(),
-            intr_note
-        ));
-        body.push_str(&format!(
-            "    GPIO_SET_MODE({}, {});\n",
-            g.pin,
-            g.mode.as_c_macro()
-        ));
-        if let Some(edge) = g.interrupt {
+    gpios
+        .iter()
+        .map(|g| {
+            let intr_note = match g.interrupt {
+                Some(edge) => format!(", interrupt on {}", edge.describe()),
+                None => String::new(),
+            };
+            let mut body = format!("void {}(void) {{\n", init_name(g));
             body.push_str(&format!(
-                "    GPIO_ATTACH_INTERRUPT({}, {}, {});\n",
+                "    /* Pin {}: {} ({}{}) */\n",
                 g.pin,
-                edge.as_c_macro(),
-                isr_name(g)
+                g.label,
+                g.mode.describe(),
+                intr_note
             ));
-        }
-    }
-    body.push('}');
-    vec![body]
+            body.push_str(&format!(
+                "    GPIO_SET_MODE({}, {});\n",
+                g.pin,
+                g.mode.as_c_macro()
+            ));
+            if let Some(edge) = g.interrupt {
+                body.push_str(&format!(
+                    "    GPIO_ATTACH_INTERRUPT({}, {}, {});\n",
+                    g.pin,
+                    edge.as_c_macro(),
+                    isr_name(g)
+                ));
+            }
+            body.push('}');
+            body
+        })
+        .collect()
 }
 
 /// Declaration block of GPIO ISRs for `handlers.h`. Only interrupt-enabled pins

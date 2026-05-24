@@ -47,8 +47,22 @@ pub fn build(board: &Board) -> Result<DepGraph, Vec<ValidationError>> {
     for bus in &board.i2c_buses {
         for d in &bus.devices {
             g.add_edge(&d.label, &bus.label);
-            add_power_edge(board, &d.label, d.power_pin, "i2c device", &mut g, &mut errors);
-            add_depends_edge(&known, &d.label, &d.depends_on, "i2c device", &mut g, &mut errors);
+            add_power_edge(
+                board,
+                &d.label,
+                d.power_pin,
+                "i2c device",
+                &mut g,
+                &mut errors,
+            );
+            add_depends_edge(
+                &known,
+                &d.label,
+                &d.depends_on,
+                "i2c device",
+                &mut g,
+                &mut errors,
+            );
         }
     }
 
@@ -60,8 +74,22 @@ pub fn build(board: &Board) -> Result<DepGraph, Vec<ValidationError>> {
             if let Some(gpio) = board.gpio_by_pin(d.cs_pin) {
                 g.add_edge(&d.label, &gpio.label);
             }
-            add_power_edge(board, &d.label, d.power_pin, "spi device", &mut g, &mut errors);
-            add_depends_edge(&known, &d.label, &d.depends_on, "spi device", &mut g, &mut errors);
+            add_power_edge(
+                board,
+                &d.label,
+                d.power_pin,
+                "spi device",
+                &mut g,
+                &mut errors,
+            );
+            add_depends_edge(
+                &known,
+                &d.label,
+                &d.depends_on,
+                "spi device",
+                &mut g,
+                &mut errors,
+            );
         }
     }
 

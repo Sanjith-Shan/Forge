@@ -11,6 +11,7 @@ pub mod main_gen;
 pub mod spi;
 pub mod uart;
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::error::ForgeError;
@@ -55,7 +56,10 @@ pub fn render_init_header(board: &Board) -> String {
 }
 
 /// Render `init.c`: implementations for every peripheral plus `board_init`.
-pub fn render_init_source(board: &Board) -> String {
+///
+/// `layers` is the dependency-resolved initialization order (from
+/// [`crate::graph::DepGraph::layers`]); each inner vector is one layer.
+pub fn render_init_source(board: &Board, layers: &[Vec<String>]) -> String {
     let mut s = String::new();
     s.push_str("#include \"init.h\"\n");
     s.push_str("#include \"handlers.h\"\n");
@@ -63,9 +67,9 @@ pub fn render_init_source(board: &Board) -> String {
     let mut fns: Vec<String> = Vec::new();
     fns.extend(gpio::impl_fns(&board.gpios));
     fns.extend(i2c::impl_fns(&board.i2c_buses));
-    fns.extend(spi::impl_fns(&board.spi_buses));
+    fns.extend(spi::impl_fns(&board.spi_buses, &board.gpios));
     fns.extend(uart::impl_fns(&board.uarts));
-    fns.push(board_init_fn(board));
+    fns.push(board_init_fn(board, layers));
 
     for f in &fns {
         s.push('\n');
@@ -75,23 +79,128 @@ pub fn render_init_source(board: &Board) -> String {
     s
 }
 
-/// The `board_init` function that calls every peripheral initializer in order.
-fn board_init_fn(board: &Board) -> String {
+/// How a single peripheral node is rendered inside `board_init`.
+struct NodeRender {
+    /// The init call, e.g. `i2c_imu_init();`.
+    call: String,
+    /// A trailing comment describing the node (no surrounding `/* */`).
+    annot: String,
+    /// If set, a GPIO to drive HIGH before the init call (power gating).
+    power_pin: Option<u32>,
+}
+
+/// The `board_init` function: calls every initializer in dependency-resolved
+/// order, grouped into layers with explanatory comments.
+fn board_init_fn(board: &Board, layers: &[Vec<String>]) -> String {
+    let nodes = node_renders(board);
     let mut s = String::from("void board_init(void) {\n");
-    if !board.gpios.is_empty() {
-        s.push_str("    gpio_init_all();\n");
+    s.push_str("    /* === Initialization order resolved by dependency analysis === */\n");
+
+    for (i, layer) in layers.iter().enumerate() {
+        s.push('\n');
+        if i == 0 {
+            s.push_str("    /* Layer 0: no dependencies */\n");
+        } else {
+            s.push_str(&format!(
+                "    /* Layer {i}: depends on Layer {} */\n",
+                i - 1
+            ));
+        }
+        for label in layer {
+            let Some(node) = nodes.get(label) else {
+                continue;
+            };
+            if let Some(pin) = node.power_pin {
+                s.push_str(&format!(
+                    "    GPIO_WRITE({pin}, HIGH);  /* Power on {label} before init */\n"
+                ));
+            }
+            if node.annot.is_empty() {
+                s.push_str(&format!("    {}\n", node.call));
+            } else {
+                s.push_str(&format!("    {}  /* {} */\n", node.call, node.annot));
+            }
+        }
     }
-    for b in &board.i2c_buses {
-        s.push_str(&format!("    i2c_{}_init();\n", b.label));
-    }
-    for b in &board.spi_buses {
-        s.push_str(&format!("    spi_{}_init();\n", b.label));
-    }
-    for u in &board.uarts {
-        s.push_str(&format!("    uart_{}_init();\n", u.label));
-    }
+
     s.push('}');
     s
+}
+
+/// Build the per-label render info for every peripheral on the board.
+fn node_renders(board: &Board) -> HashMap<String, NodeRender> {
+    let mut map = HashMap::new();
+
+    for g in &board.gpios {
+        map.insert(
+            g.label.clone(),
+            NodeRender {
+                call: format!("{}();", gpio::init_name(g)),
+                annot: format!("pin {}, {}", g.pin, g.mode.describe()),
+                power_pin: None,
+            },
+        );
+    }
+    for b in &board.i2c_buses {
+        map.insert(
+            b.label.clone(),
+            NodeRender {
+                call: format!("i2c_{}_init();", b.label),
+                annot: format!("i2c bus {}", b.bus),
+                power_pin: None,
+            },
+        );
+        for d in &b.devices {
+            let mut annot = format!("i2c {:#04X}", d.address);
+            if let Some(dep) = &d.depends_on {
+                annot.push_str(&format!(", depends_on \"{dep}\""));
+            }
+            map.insert(
+                d.label.clone(),
+                NodeRender {
+                    call: format!("i2c_{}_init();", d.label),
+                    annot,
+                    power_pin: d.power_pin,
+                },
+            );
+        }
+    }
+    for b in &board.spi_buses {
+        map.insert(
+            b.label.clone(),
+            NodeRender {
+                call: format!("spi_{}_init();", b.label),
+                annot: format!("spi bus {}", b.bus),
+                power_pin: None,
+            },
+        );
+        for d in &b.devices {
+            let mut annot = format!("spi cs {}", d.cs_pin);
+            if let Some(dep) = &d.depends_on {
+                annot.push_str(&format!(", depends_on \"{dep}\""));
+            }
+            map.insert(
+                d.label.clone(),
+                NodeRender {
+                    call: format!("spi_{}_init();", d.label),
+                    annot,
+                    power_pin: d.power_pin,
+                },
+            );
+        }
+    }
+    for u in &board.uarts {
+        map.insert(
+            u.label.clone(),
+            NodeRender {
+                call: format!("uart_{}_init();", u.label),
+                annot: format!("uart {}", u.index),
+                power_pin: None,
+            },
+        );
+    }
+
+    map
 }
 
 /// Render `handlers.h`: declarations for GPIO and UART interrupt handlers.
@@ -155,9 +264,18 @@ pub async fn generate_init_header(board: Board, output_dir: PathBuf) -> Result<(
     write_file(&output_dir.join("init.h"), &render_init_header(&board)).await
 }
 
-/// Render and write `init.c` into `output_dir`.
-pub async fn generate_init_source(board: Board, output_dir: PathBuf) -> Result<(), ForgeError> {
-    write_file(&output_dir.join("init.c"), &render_init_source(&board)).await
+/// Render and write `init.c` into `output_dir`, ordering `board_init` by the
+/// supplied dependency layers.
+pub async fn generate_init_source(
+    board: Board,
+    layers: Vec<Vec<String>>,
+    output_dir: PathBuf,
+) -> Result<(), ForgeError> {
+    write_file(
+        &output_dir.join("init.c"),
+        &render_init_source(&board, &layers),
+    )
+    .await
 }
 
 /// Render and write `handlers.h` into `output_dir`.

@@ -5,9 +5,8 @@ use std::process::ExitCode;
 
 use clap::Parser;
 
-use forge::config;
 use forge::error::ForgeError;
-use forge::model::Board;
+use forge::{analysis, codegen, config, graph};
 
 /// Generate embedded C boilerplate from TOML hardware descriptions.
 #[derive(Debug, Parser)]
@@ -31,6 +30,18 @@ struct Args {
     /// Validate config only; exit 0 if valid, non-zero otherwise.
     #[arg(long)]
     check: bool,
+
+    /// Print the dependency graph in Graphviz DOT format and exit.
+    #[arg(long)]
+    graph: bool,
+
+    /// Write a detailed analysis.txt alongside the generated files.
+    #[arg(long)]
+    report: bool,
+
+    /// Suppress analysis warnings (the summary still prints).
+    #[arg(long)]
+    no_warnings: bool,
 }
 
 #[tokio::main]
@@ -45,27 +56,49 @@ async fn main() -> ExitCode {
     }
 }
 
-/// The full pipeline: parse, validate, then (unless `--check`/`--dry-run`)
-/// generate all output files concurrently.
+/// The full pipeline: parse, validate, build the dependency graph, analyze,
+/// then (unless `--graph`/`--check`/`--dry-run`) generate all output files
+/// concurrently in dependency-resolved order.
 async fn run(args: Args) -> Result<(), ForgeError> {
     let raw = config::parse(&args.config)?;
     let validated = config::validate(raw).map_err(ForgeError::Validation)?;
     let board = validated.board;
 
+    // Dependency graph construction is itself a validation stage: it catches
+    // unknown `depends_on` targets, bad `power_pin`s, and cycles.
+    let dep_graph = graph::build(&board).map_err(ForgeError::Validation)?;
+
+    // `--graph` short-circuits: emit DOT and stop.
+    if args.graph {
+        print!("{}", graph::dot::to_dot(&board, &dep_graph));
+        return Ok(());
+    }
+
+    let layers = dep_graph
+        .layers()
+        .map_err(|cycle| ForgeError::Validation(vec![cycle_error(&cycle)]))?;
+
+    // Validation warnings always surface; analysis warnings are opt-out.
     for warning in &validated.warnings {
         eprintln!("warning: {warning}");
     }
+    let analysis_warnings = analysis::analyze(&board);
+    if !args.no_warnings {
+        for warning in &analysis_warnings {
+            eprintln!("warning: {warning}");
+        }
+    }
+
+    let total_warnings = validated.warnings.len() + analysis_warnings.len();
+    analysis::print_summary(&board, layers.len(), total_warnings);
 
     if args.check {
         println!("{}: config is valid.", args.config.display());
         return Ok(());
     }
 
-    if args.verbose || args.dry_run {
-        print_summary(&board, &args.output, args.dry_run);
-    }
-
     if args.dry_run {
+        println!("(dry run — no files written)");
         return Ok(());
     }
 
@@ -80,23 +113,21 @@ async fn run(args: Args) -> Result<(), ForgeError> {
     // owns a clone of the board so it can run for `'static`.
     let dir = &args.output;
     let handles = vec![
-        tokio::spawn(forge::codegen::generate_init_header(
+        tokio::spawn(codegen::generate_init_header(board.clone(), dir.clone())),
+        tokio::spawn(codegen::generate_init_source(
+            board.clone(),
+            layers.clone(),
+            dir.clone(),
+        )),
+        tokio::spawn(codegen::generate_handlers_header(
             board.clone(),
             dir.clone(),
         )),
-        tokio::spawn(forge::codegen::generate_init_source(
+        tokio::spawn(codegen::generate_handlers_source(
             board.clone(),
             dir.clone(),
         )),
-        tokio::spawn(forge::codegen::generate_handlers_header(
-            board.clone(),
-            dir.clone(),
-        )),
-        tokio::spawn(forge::codegen::generate_handlers_source(
-            board.clone(),
-            dir.clone(),
-        )),
-        tokio::spawn(forge::codegen::generate_main(board.clone(), dir.clone())),
+        tokio::spawn(codegen::generate_main(board.clone(), dir.clone())),
     ];
 
     for handle in handles {
@@ -104,51 +135,40 @@ async fn run(args: Args) -> Result<(), ForgeError> {
         handle.await??;
     }
 
+    if args.report {
+        analysis::write_report(
+            &board,
+            &dep_graph,
+            &layers,
+            &analysis_warnings,
+            &args.output,
+        )
+        .await?;
+    }
+
     println!(
         "Generated {} files for board '{}' in {}",
-        forge::codegen::OUTPUT_FILES.len(),
+        codegen::OUTPUT_FILES.len(),
         board.name,
         args.output.display()
     );
     if args.verbose {
-        for file in forge::codegen::OUTPUT_FILES {
+        for file in codegen::OUTPUT_FILES {
             println!("  {}", args.output.join(file).display());
+        }
+        if args.report {
+            println!("  {}", args.output.join("analysis.txt").display());
         }
     }
 
     Ok(())
 }
 
-/// Print a human-readable summary of what was (or would be) generated.
-fn print_summary(board: &Board, output: &std::path::Path, dry_run: bool) {
-    let verb = if dry_run {
-        "Would generate"
-    } else {
-        "Generating"
-    };
-    println!(
-        "{verb} code for board '{}' (MCU: {} @ {} MHz)",
-        board.name, board.mcu, board.clock_mhz
-    );
-    println!("  GPIO pins:  {}", board.gpios.len());
-    println!(
-        "  I2C buses:  {} ({} device(s))",
-        board.i2c_buses.len(),
-        board
-            .i2c_buses
-            .iter()
-            .map(|b| b.devices.len())
-            .sum::<usize>()
-    );
-    println!(
-        "  SPI buses:  {} ({} device(s))",
-        board.spi_buses.len(),
-        board
-            .spi_buses
-            .iter()
-            .map(|b| b.devices.len())
-            .sum::<usize>()
-    );
-    println!("  UARTs:      {}", board.uarts.len());
-    println!("  Output dir: {}", output.display());
+/// Build a validation error describing a dependency cycle (defensive: the graph
+/// builder normally catches cycles first).
+fn cycle_error(cycle: &[String]) -> forge::error::ValidationError {
+    forge::error::ValidationError::new(format!(
+        "Circular dependency detected in initialization order: {}",
+        cycle.join(" -> ")
+    ))
 }

@@ -1,4 +1,5 @@
-//! I2C code generation: per bus, an init plus blocking read/write helpers.
+//! I2C code generation: per bus, an init plus blocking read/write helpers; per
+//! device, an init stub the developer fills in with device-specific setup.
 
 use crate::model::I2cBus;
 
@@ -18,11 +19,15 @@ pub fn decl_section(buses: &[I2cBus]) -> Option<String> {
             "void i2c_{}_read(uint8_t addr, uint8_t reg, uint8_t *data, uint16_t len);",
             b.label
         ));
+        for d in &b.devices {
+            lines.push(format!("void i2c_{}_init(void);", d.label));
+        }
     }
     Some(lines.join("\n"))
 }
 
-/// Implementation functions for `init.c`: init, write, read per bus.
+/// Implementation functions for `init.c`: per bus init/write/read, then a
+/// per-device init stub.
 pub fn impl_fns(buses: &[I2cBus]) -> Vec<String> {
     let mut fns = Vec::new();
     for b in buses {
@@ -64,6 +69,16 @@ pub fn impl_fns(buses: &[I2cBus]) -> Vec<String> {
             label = b.label,
             bus = b.bus,
         ));
+
+        for d in &b.devices {
+            fns.push(format!(
+                "void i2c_{label}_init(void) {{\n    \
+                 /* TODO: Initialize {label} (I2C device {addr:#04X} on bus {bus}) */\n}}",
+                label = d.label,
+                addr = d.address,
+                bus = b.label,
+            ));
+        }
     }
     fns
 }

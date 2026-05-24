@@ -1,5 +1,7 @@
 # Jupiter v2 — based on real hardware: AD5252 digital potentiometers on I2C,
-# six relay-control GPIOs, a status LED, and a serial link for hand-tracking data.
+# six relay-control GPIOs, a status LED, an interrupt-driven safety switch, and
+# a serial link for hand-tracking data. The potentiometers declare poll rates so
+# the analysis pass can estimate I2C bus utilization.
 [board]
 name = "jupiter_v2"
 mcu = "esp32c6"
@@ -40,6 +42,12 @@ pin = 13
 mode = "output"
 label = "status_led"
 
+[[gpio]]
+pin = 14
+mode = "input_pullup"
+label = "safety_switch"
+interrupt = "falling"
+
 [[i2c]]
 bus = 0
 sda_pin = 21
@@ -50,10 +58,12 @@ label = "pot_bus"
 [[i2c.device]]
 address = 0x2C
 label = "ad5252_left"
+poll_rate_hz = 90
 
 [[i2c.device]]
 address = 0x2D
 label = "ad5252_right"
+poll_rate_hz = 90
 
 [[uart]]
 index = 0

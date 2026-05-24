@@ -59,7 +59,10 @@ fn visit(
             }
             Color::Gray => {
                 // Back-edge: slice the current path from `dep` and close the loop.
-                let start = path.iter().position(|n| n == &dep).expect("gray node on path");
+                let start = path
+                    .iter()
+                    .position(|n| n == &dep)
+                    .expect("gray node on path");
                 let mut found: Vec<String> = path[start..].to_vec();
                 found.push(dep);
                 return Some(found);

@@ -10,6 +10,7 @@
 //! The CLI in `main.rs` is a thin wrapper that wires these stages together and
 //! runs the code generators concurrently with Tokio.
 
+pub mod analysis;
 pub mod codegen;
 pub mod config;
 pub mod error;

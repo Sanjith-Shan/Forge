@@ -371,7 +371,11 @@ fn validate_i2c_address(addr: u32, owner_desc: &str, cx: &mut Collector) -> Opti
     Some(addr as u8)
 }
 
-fn validate_spi(raw: &[RawSpi], gpio_output_pins: &HashSet<u32>, cx: &mut Collector) -> Vec<SpiBus> {
+fn validate_spi(
+    raw: &[RawSpi],
+    gpio_output_pins: &HashSet<u32>,
+    cx: &mut Collector,
+) -> Vec<SpiBus> {
     let mut out = Vec::new();
     for (idx, b) in raw.iter().enumerate() {
         let owner_desc = match (&b.label, b.bus) {
