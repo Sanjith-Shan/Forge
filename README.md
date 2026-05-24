@@ -1,6 +1,6 @@
 # Forge
 
-I built Forge after rewriting the same hardware setup code at hackathon after hackathon. Every project started the same way, hand writing I2C, SPI, UART, and GPIO initialization, accidentally assigning a pin twice, and then losing an hour tracking down the mistake. Forge is the tool I wished I had. You describe the board once and it writes the boilerplate, checks it for mistakes, and orders the startup correctly.
+I built Forge after rewriting the same hardware setup code at hackathon after hackathon. Every project started the same way, hand writing I2C, SPI, UART, and GPIO initialization, accidentally assigning a pin twice, and then losing an hour tracking down the mistake.
 
 > Describe an embedded board once. Forge verifies it and generates initialization code for multiple targets.
 
