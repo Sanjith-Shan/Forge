@@ -8,6 +8,10 @@
 *.swp
 .DS_Store
 
+# Secrets — API keys for the AI frontend must never be committed
+.env
+*.env
+
 # Author-provided spec/planning docs — never push these
 FORGE_SPEC.md
 FORGE_ADDITIONS.md

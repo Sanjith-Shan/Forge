@@ -172,6 +172,35 @@ fn label_must_be_valid_c_identifier() {
 }
 
 #[test]
+fn duplicate_i2c_address_on_same_bus_is_rejected() {
+    let toml = r#"
+        [board]
+        name = "d"
+        mcu = "x"
+        clock_mhz = 8
+        [[i2c]]
+        bus = 0
+        sda_pin = 1
+        scl_pin = 2
+        speed_khz = 100
+        label = "bus0"
+        [[i2c.device]]
+        address = 0x68
+        label = "imu"
+        [[i2c.device]]
+        address = 0x68
+        label = "clone"
+    "#;
+    let errors = errors_for(toml);
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.contains("0x68") && e.contains("address")),
+        "should reject duplicate address: {errors:?}"
+    );
+}
+
+#[test]
 fn all_errors_collected_not_just_the_first() {
     // Two independent problems: a bad SPI mode and a duplicate label.
     let toml = r#"
