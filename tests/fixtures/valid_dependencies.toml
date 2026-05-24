@@ -1,0 +1,52 @@
+# A sensor hub that exercises dependency ordering: an I2C mux that must come up
+# before the sensors behind it, a power-gated IMU, and a flash chip whose
+# chip-select is a dedicated GPIO.
+[board]
+name = "sensor_hub"
+mcu = "stm32f4"
+clock_mhz = 168
+
+[[gpio]]
+pin = 12
+mode = "output"
+label = "sensor_power"
+
+[[gpio]]
+pin = 5
+mode = "output"
+label = "cs_flash"
+
+[[i2c]]
+bus = 0
+sda_pin = 21
+scl_pin = 22
+speed_khz = 400
+label = "sensor_bus"
+
+[[i2c.device]]
+address = 0x70
+label = "i2c_mux"
+
+[[i2c.device]]
+address = 0x68
+label = "imu"
+depends_on = "i2c_mux"
+power_pin = 12
+
+[[i2c.device]]
+address = 0x76
+label = "barometer"
+depends_on = "i2c_mux"
+
+[[spi]]
+bus = 0
+mosi_pin = 23
+miso_pin = 19
+sck_pin = 18
+label = "storage_bus"
+
+[[spi.device]]
+cs_pin = 5
+label = "flash"
+mode = 0
+speed_mhz = 20

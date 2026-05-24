@@ -1,0 +1,4 @@
+#ifndef FORGE_HANDLERS_H
+#define FORGE_HANDLERS_H
+
+#endif /* FORGE_HANDLERS_H */

@@ -10,7 +10,8 @@
 #include <stdint.h>
 
 /* GPIO */
-void gpio_init_all(void);
+void gpio_init_led(void);
+void gpio_init_button(void);
 
 /* UART */
 void uart_console_init(void);

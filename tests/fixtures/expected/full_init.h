@@ -10,15 +10,19 @@
 #include <stdint.h>
 
 /* GPIO */
-void gpio_init_all(void);
+void gpio_init_status_led(void);
+void gpio_init_user_button(void);
 
 /* I2C */
 void i2c_sensor_bus_init(void);
 void i2c_sensor_bus_write(uint8_t addr, uint8_t reg, uint8_t *data, uint16_t len);
 void i2c_sensor_bus_read(uint8_t addr, uint8_t reg, uint8_t *data, uint16_t len);
+void i2c_potentiometer_init(void);
+void i2c_imu_init(void);
 
 /* SPI */
 void spi_display_bus_init(void);
+void spi_oled_init(void);
 void spi_oled_select(void);
 void spi_oled_deselect(void);
 void spi_display_bus_transfer(uint8_t *tx, uint8_t *rx, uint16_t len);

@@ -1,0 +1,21 @@
+[board]
+name = "cycle_board"
+mcu = "esp32c6"
+clock_mhz = 160
+
+[[i2c]]
+bus = 0
+sda_pin = 21
+scl_pin = 22
+speed_khz = 400
+label = "bus0"
+
+[[i2c.device]]
+address = 0x10
+label = "alpha"
+depends_on = "beta"
+
+[[i2c.device]]
+address = 0x11
+label = "beta"
+depends_on = "alpha"

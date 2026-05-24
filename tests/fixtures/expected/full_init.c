@@ -1,10 +1,12 @@
 #include "init.h"
 #include "handlers.h"
 
-void gpio_init_all(void) {
+void gpio_init_status_led(void) {
     /* Pin 13: status_led (output) */
     GPIO_SET_MODE(13, GPIO_MODE_OUTPUT);
+}
 
+void gpio_init_user_button(void) {
     /* Pin 4: user_button (input, pull-up, interrupt on falling edge) */
     GPIO_SET_MODE(4, GPIO_MODE_INPUT_PULLUP);
     GPIO_ATTACH_INTERRUPT(4, GPIO_INTR_FALLING, user_button_isr);
@@ -26,10 +28,21 @@ void i2c_sensor_bus_read(uint8_t addr, uint8_t reg, uint8_t *data, uint16_t len)
     I2C_READ(0, addr, reg, data, len);
 }
 
+void i2c_potentiometer_init(void) {
+    /* TODO: Initialize potentiometer (I2C device 0x2C on bus sensor_bus) */
+}
+
+void i2c_imu_init(void) {
+    /* TODO: Initialize imu (I2C device 0x68 on bus sensor_bus) */
+}
+
 void spi_display_bus_init(void) {
     /* SPI bus 0: MOSI=23, MISO=19, SCK=18 */
     SPI_INIT(0, 23, 19, 18);
-    /* Chip-select: oled on pin 5 (mode 0, 10 MHz) */
+}
+
+void spi_oled_init(void) {
+    /* SPI device oled: CS=5, mode 0, 10 MHz on bus display_bus */
     GPIO_SET_MODE(5, GPIO_MODE_OUTPUT);
     SPI_CONFIG_CS(5, SPI_MODE_0, 10000000);
 }
@@ -72,9 +85,18 @@ void uart_gps_send(const uint8_t *data, uint16_t len) {
 }
 
 void board_init(void) {
-    gpio_init_all();
-    i2c_sensor_bus_init();
-    spi_display_bus_init();
-    uart_debug_serial_init();
-    uart_gps_init();
+    /* === Initialization order resolved by dependency analysis === */
+
+    /* Layer 0: no dependencies */
+    uart_debug_serial_init();  /* uart 1 */
+    spi_display_bus_init();  /* spi bus 0 */
+    uart_gps_init();  /* uart 2 */
+    i2c_sensor_bus_init();  /* i2c bus 0 */
+    gpio_init_status_led();  /* pin 13, output */
+    gpio_init_user_button();  /* pin 4, input, pull-up */
+
+    /* Layer 1: depends on Layer 0 */
+    i2c_imu_init();  /* i2c 0x68 */
+    spi_oled_init();  /* spi cs 5 */
+    i2c_potentiometer_init();  /* i2c 0x2C */
 }
