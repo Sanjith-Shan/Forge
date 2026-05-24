@@ -1,14 +1,17 @@
 [package]
-name = "forge"
+name = "forge-embedded"
 version = "0.1.0"
 edition = "2021"
-description = "Generate embedded C boilerplate from TOML hardware descriptions"
+description = "Analyze embedded hardware configs and generate dependency-ordered C initialization code"
 license = "MIT"
 repository = "https://github.com/Sanjith-Shan/Forge"
 readme = "README.md"
-keywords = ["embedded", "codegen", "c", "cli", "toml"]
-categories = ["command-line-utilities", "embedded"]
+keywords = ["embedded", "code-generation", "firmware", "hardware"]
+categories = ["development-tools", "embedded"]
 
+# The crate publishes as `forge-embedded` (the name `forge` is taken on
+# crates.io), but the installed binary and the importable library are both
+# `forge`.
 [[bin]]
 name = "forge"
 path = "src/main.rs"
