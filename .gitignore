@@ -7,3 +7,9 @@
 # Editor / OS cruft
 *.swp
 .DS_Store
+
+# Author-provided spec/planning docs — never push these
+FORGE_SPEC.md
+FORGE_ADDITIONS.md
+*_SPEC.md
+*_ADDITIONS.md
