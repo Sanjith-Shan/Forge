@@ -5,7 +5,7 @@
 //! `Vec<ValidationError>`; softer issues (e.g. reserved I2C addresses) are
 //! collected as warnings and returned alongside a successfully-built board.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::config::parse::{
     RawBoard, RawConfig, RawGpio, RawI2c, RawI2cDevice, RawSpi, RawSpiDevice, RawUart,
@@ -35,8 +35,15 @@ pub fn validate(raw: RawConfig) -> Result<Validated, Vec<ValidationError>> {
     let (name, mcu, clock_mhz) = validate_board(&raw.board, &mut cx);
 
     let gpios = validate_gpios(&raw.gpio, &mut cx);
+    // Pins backed by a declared GPIO output may be referenced (not re-claimed)
+    // by an SPI device's chip-select, since that GPIO *is* the CS line.
+    let gpio_output_pins: HashSet<u32> = gpios
+        .iter()
+        .filter(|g| matches!(g.mode, GpioMode::Output))
+        .map(|g| g.pin)
+        .collect();
     let i2c_buses = validate_i2c(&raw.i2c, &mut cx);
-    let spi_buses = validate_spi(&raw.spi, &mut cx);
+    let spi_buses = validate_spi(&raw.spi, &gpio_output_pins, &mut cx);
     let uarts = validate_uart(&raw.uart, &mut cx);
 
     if !cx.errors.is_empty() {
@@ -333,7 +340,13 @@ fn validate_i2c_devices(
         let address = address.and_then(|a| validate_i2c_address(a, &owner_desc, cx));
 
         if let (Some(address), Some(label)) = (address, label) {
-            out.push(I2cDevice { address, label });
+            out.push(I2cDevice {
+                address,
+                label,
+                depends_on: d.depends_on.clone(),
+                power_pin: d.power_pin,
+                poll_rate_hz: d.poll_rate_hz,
+            });
         }
     }
     out
@@ -358,7 +371,7 @@ fn validate_i2c_address(addr: u32, owner_desc: &str, cx: &mut Collector) -> Opti
     Some(addr as u8)
 }
 
-fn validate_spi(raw: &[RawSpi], cx: &mut Collector) -> Vec<SpiBus> {
+fn validate_spi(raw: &[RawSpi], gpio_output_pins: &HashSet<u32>, cx: &mut Collector) -> Vec<SpiBus> {
     let mut out = Vec::new();
     for (idx, b) in raw.iter().enumerate() {
         let owner_desc = match (&b.label, b.bus) {
@@ -390,7 +403,7 @@ fn validate_spi(raw: &[RawSpi], cx: &mut Collector) -> Vec<SpiBus> {
             cx.claim_pin(p, &format!("{bus_name} (SCK)"));
         }
 
-        let devices = validate_spi_devices(&b.devices, &bus_name, cx);
+        let devices = validate_spi_devices(&b.devices, &bus_name, gpio_output_pins, cx);
 
         if let (Some(bus), Some(mosi_pin), Some(miso_pin), Some(sck_pin), Some(label)) =
             (bus, mosi_pin, miso_pin, sck_pin, label)
@@ -411,6 +424,7 @@ fn validate_spi(raw: &[RawSpi], cx: &mut Collector) -> Vec<SpiBus> {
 fn validate_spi_devices(
     raw: &[RawSpiDevice],
     bus_name: &str,
+    gpio_output_pins: &HashSet<u32>,
     cx: &mut Collector,
 ) -> Vec<SpiDevice> {
     let mut out = Vec::new();
@@ -432,7 +446,12 @@ fn validate_spi_devices(
             cx.claim_label(l, &dev_name);
         }
         if let Some(p) = cs_pin {
-            cx.claim_pin(p, &format!("{dev_name} (CS)"));
+            // A chip-select pin that matches a declared GPIO output is a
+            // reference to that GPIO (it *is* the CS line), not a conflicting
+            // second claim — the dependency graph links them instead.
+            if !gpio_output_pins.contains(&p) {
+                cx.claim_pin(p, &format!("{dev_name} (CS)"));
+            }
         }
 
         let mode = match d.mode {
@@ -459,6 +478,8 @@ fn validate_spi_devices(
                 label,
                 mode,
                 speed_mhz,
+                depends_on: d.depends_on.clone(),
+                power_pin: d.power_pin,
             });
         }
     }

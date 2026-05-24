@@ -32,6 +32,18 @@ impl Board {
             && self.spi_buses.is_empty()
             && self.uarts.is_empty()
     }
+
+    /// Find the GPIO declared on a given pin, if any.
+    pub fn gpio_by_pin(&self, pin: u32) -> Option<&Gpio> {
+        self.gpios.iter().find(|g| g.pin == pin)
+    }
+}
+
+impl Gpio {
+    /// True if this pin is configured as a push-pull output.
+    pub fn is_output(&self) -> bool {
+        matches!(self.mode, GpioMode::Output)
+    }
 }
 
 /// A single GPIO pin.
@@ -159,6 +171,12 @@ pub struct I2cDevice {
     pub address: u8,
     /// C-identifier label.
     pub label: String,
+    /// Label of a peripheral that must initialize before this device.
+    pub depends_on: Option<String>,
+    /// GPIO pin driven HIGH before this device initializes.
+    pub power_pin: Option<u32>,
+    /// How often this device is polled per second (used by analysis).
+    pub poll_rate_hz: Option<u32>,
 }
 
 /// An SPI bus and the devices attached to it.
@@ -189,6 +207,10 @@ pub struct SpiDevice {
     pub mode: u8,
     /// Clock speed in MHz.
     pub speed_mhz: u32,
+    /// Label of a peripheral that must initialize before this device.
+    pub depends_on: Option<String>,
+    /// GPIO pin driven HIGH before this device initializes.
+    pub power_pin: Option<u32>,
 }
 
 /// A UART peripheral.

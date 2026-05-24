@@ -75,6 +75,12 @@ pub struct RawI2cDevice {
     pub address: Option<u32>,
     /// Human-readable label; becomes part of C function names.
     pub label: Option<String>,
+    /// Label of another peripheral that must initialize before this device.
+    pub depends_on: Option<String>,
+    /// GPIO pin that must be driven HIGH before this device initializes.
+    pub power_pin: Option<u32>,
+    /// How often this device is polled per second (used by analysis).
+    pub poll_rate_hz: Option<u32>,
 }
 
 /// A single `[[spi]]` bus, with any nested `[[spi.device]]` entries.
@@ -106,6 +112,10 @@ pub struct RawSpiDevice {
     pub mode: Option<u32>,
     /// Clock speed in MHz.
     pub speed_mhz: Option<u32>,
+    /// Label of another peripheral that must initialize before this device.
+    pub depends_on: Option<String>,
+    /// GPIO pin that must be driven HIGH before this device initializes.
+    pub power_pin: Option<u32>,
 }
 
 /// A single `[[uart]]` peripheral.

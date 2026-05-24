@@ -13,6 +13,7 @@
 pub mod codegen;
 pub mod config;
 pub mod error;
+pub mod graph;
 pub mod model;
 
 pub use error::{ForgeError, ValidationError};
